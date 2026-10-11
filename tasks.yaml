@@ -41,14 +41,14 @@ tasks:
   - id: api
     phase: implementation
     agent: developer
-    status: pending
+    status: complete
     depends_on: [threat-engine]
     output: src/api/
 
   - id: extension
     phase: implementation
     agent: developer
-    status: pending
+    status: complete
     depends_on: [api]
     output: extension/
 
