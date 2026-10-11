@@ -49,3 +49,26 @@ Chronological record of decisions, changes, and rationale.
 
 ### Next
 - Implementation phase: `threat-engine` (TDD) → `api` → `extension` + `dashboard`.
+
+## 2026-10-11 — Implementation complete (engine, API, extension, dashboard, RBAC)
+
+All TDD, all verified end-to-end against live servers.
+
+- **threat-engine** (65→143 tests after review fixes): feed adapters, commercial
+  licensing gate, SSRF-safe reputation service. Claude review found + we fixed a
+  gate bypass, 12 SSRF bypasses, feed failure isolation, kind routing.
+- **api** (`4e8f5c3`): check-url / check-domain / health; SSRF rejections → 422.
+- **extension** (`50639bb`): MV3, service worker owns all calls, bounded verdict
+  cache, warning banner. **Verified in real Chromium** (SW registered, CHECK_URL
+  round-tripped a malicious verdict).
+- **dashboard** (`ed45988`): AlertStore (SQLite, per-org isolation) + `GET /alerts`
+  with severity filter/pagination + dashboard UI. Verified: othercorp sees 0.
+- **auth / team-management** (`2412671`): `OrgStore` with owner>admin>member RBAC,
+  table-driven permissions, tenant isolation. `/alerts` honors x-user-id;
+  `/users` requires admin+. Verified live: member 403, owner 200, ghost 403.
+
+**Test count: 171 passing.** Pushed to github.com/anhakeem/cyber-health-check.
+
+### Next
+- Enterprise remainder: SIEM integrations (Splunk HEC / ELK / syslog),
+  compliance reporting, audit-log export. Optional — MVP + enterprise RBAC done.

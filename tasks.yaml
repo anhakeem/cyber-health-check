@@ -62,14 +62,14 @@ tasks:
   - id: test
     phase: testing
     agent: tester
-    status: pending
+    status: complete
     depends_on: [extension, dashboard]
     output: results/test-results.md
 
   - id: team-management
     phase: enterprise
     agent: developer
-    status: pending
+    status: complete
     depends_on: [test]
     output: src/auth/
 
