@@ -76,14 +76,14 @@ tasks:
   - id: siem-integrations
     phase: enterprise
     agent: developer
-    status: pending
+    status: complete
     depends_on: [team-management]
     output: src/integrations/
 
   - id: compliance-reporting
     phase: enterprise
     agent: developer
-    status: pending
+    status: complete
     depends_on: [siem-integrations]
     output: src/reports/
 
