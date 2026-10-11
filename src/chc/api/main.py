@@ -16,13 +16,15 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import FastAPI, Header, Request
+from fastapi import FastAPI, Header, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
+from chc.audit import AuditLog
 from chc.auth import AuthError, OrgStore, Principal
 from chc.models import CheckResponse
+from chc.reports import compliance_report
 
 log = logging.getLogger(__name__)
 
@@ -63,7 +65,8 @@ def _safe_errors(exc: RequestValidationError) -> list[dict]:
     return out
 
 
-def create_app(reputation_factory=None, alert_store_factory=None, org_store_factory=None) -> FastAPI:
+def create_app(reputation_factory=None, alert_store_factory=None, org_store_factory=None,
+               audit_log_factory=None) -> FastAPI:
     app = FastAPI(title="Cyber Health Check API", version="1.0.0")
 
     if reputation_factory is None:
@@ -72,6 +75,8 @@ def create_app(reputation_factory=None, alert_store_factory=None, org_store_fact
         alert_store_factory = _default_alert_store_factory
     if org_store_factory is None:
         org_store_factory = _default_org_store_factory
+    if audit_log_factory is None:
+        audit_log_factory = _default_audit_log_factory
 
     cache: dict[str, object] = {}
 
@@ -89,6 +94,11 @@ def create_app(reputation_factory=None, alert_store_factory=None, org_store_fact
         if "orgs" not in cache:
             cache["orgs"] = org_store_factory()
         return cache["orgs"]
+
+    def get_audit_log():
+        if "audit" not in cache:
+            cache["audit"] = audit_log_factory()
+        return cache["audit"]
 
     @app.exception_handler(RequestValidationError)
     async def _validation_handler(request: Request, exc: RequestValidationError):
@@ -157,6 +167,36 @@ def create_app(reputation_factory=None, alert_store_factory=None, org_store_fact
             return _error(403, "FORBIDDEN", str(exc))
         return {"users": get_org_store().list_users(org_id)}
 
+    @app.get(f"{API_PREFIX}/compliance/report")
+    async def compliance(org_id: str, x_user_id: str = Header(...)):
+        """Org-scoped compliance evidence. Requires users:read (admin+)."""
+        try:
+            get_org_store().authorize(
+                Principal(org_id=org_id, user_id=x_user_id, role="member"),
+                "users:read", target_org=org_id,
+            )
+        except AuthError as exc:
+            return _error(403, "FORBIDDEN", str(exc))
+        get_audit_log().record(
+            org_id=org_id, actor=x_user_id, action="compliance.report",
+            target=org_id, meta={},
+        )
+        return compliance_report(org_id=org_id, alert_store=get_alert_store(),
+                                 audit_log=get_audit_log())
+
+    @app.get(f"{API_PREFIX}/audit/export")
+    async def audit_export(org_id: str, x_user_id: str = Header(...)):
+        """JSONL audit export. Requires alerts:export (admin+)."""
+        try:
+            get_org_store().authorize(
+                Principal(org_id=org_id, user_id=x_user_id, role="member"),
+                "alerts:export", target_org=org_id,
+            )
+        except AuthError as exc:
+            return _error(403, "FORBIDDEN", str(exc))
+        body = get_audit_log().export_jsonl(org_id=org_id)
+        return Response(content=body, media_type="application/x-ndjson")
+
     @app.get(f"{API_PREFIX}/health")
     async def health():
         return {"status": "ok"}
@@ -190,6 +230,13 @@ def _default_org_store_factory():
     import os
 
     return OrgStore(db_path=os.environ.get("ORGS_DB", "./cyber_health_check.db"))
+
+
+def _default_audit_log_factory():
+    """Audit log backed by the configured SQLite database."""
+    import os
+
+    return AuditLog(db_path=os.environ.get("AUDIT_DB", "./cyber_health_check.db"))
 
 
 app = create_app()
