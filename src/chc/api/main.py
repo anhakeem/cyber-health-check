@@ -16,11 +16,12 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Header, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
+from chc.auth import AuthError, OrgStore, Principal
 from chc.models import CheckResponse
 
 log = logging.getLogger(__name__)
@@ -62,13 +63,15 @@ def _safe_errors(exc: RequestValidationError) -> list[dict]:
     return out
 
 
-def create_app(reputation_factory=None, alert_store_factory=None) -> FastAPI:
+def create_app(reputation_factory=None, alert_store_factory=None, org_store_factory=None) -> FastAPI:
     app = FastAPI(title="Cyber Health Check API", version="1.0.0")
 
     if reputation_factory is None:
         reputation_factory = _default_reputation_factory
     if alert_store_factory is None:
         alert_store_factory = _default_alert_store_factory
+    if org_store_factory is None:
+        org_store_factory = _default_org_store_factory
 
     cache: dict[str, object] = {}
 
@@ -81,6 +84,11 @@ def create_app(reputation_factory=None, alert_store_factory=None) -> FastAPI:
         if "alerts" not in cache:
             cache["alerts"] = alert_store_factory()
         return cache["alerts"]
+
+    def get_org_store():
+        if "orgs" not in cache:
+            cache["orgs"] = org_store_factory()
+        return cache["orgs"]
 
     @app.exception_handler(RequestValidationError)
     async def _validation_handler(request: Request, exc: RequestValidationError):
@@ -114,7 +122,17 @@ def create_app(reputation_factory=None, alert_store_factory=None) -> FastAPI:
 
     @app.get(f"{API_PREFIX}/alerts")
     async def alerts(org_id: str, severity: str | None = None, since: str | None = None,
-                     limit: int = 50, offset: int = 0):
+                     limit: int = 50, offset: int = 0,
+                     x_user_id: str | None = Header(default=None)):
+        # RBAC: if a user is identified, authorize alerts:read against this org.
+        if x_user_id is not None:
+            try:
+                get_org_store().authorize(
+                    Principal(org_id=org_id, user_id=x_user_id, role="member"),
+                    "alerts:read", target_org=org_id,
+                )
+            except AuthError as exc:
+                return _error(403, "FORBIDDEN", str(exc))
         store = get_alert_store()
         rows = store.list(org_id=org_id, severity=severity, since=since,
                           limit=limit, offset=offset)
@@ -126,6 +144,18 @@ def create_app(reputation_factory=None, alert_store_factory=None) -> FastAPI:
                 "total": store.count(org_id=org_id, severity=severity),
             },
         }
+
+    @app.get(f"{API_PREFIX}/users")
+    async def list_users(org_id: str, x_user_id: str = Header(...)):
+        """List org users. Requires the caller to hold users:read (admin+)."""
+        try:
+            get_org_store().authorize(
+                Principal(org_id=org_id, user_id=x_user_id, role="member"),
+                "users:read", target_org=org_id,
+            )
+        except AuthError as exc:
+            return _error(403, "FORBIDDEN", str(exc))
+        return {"users": get_org_store().list_users(org_id)}
 
     @app.get(f"{API_PREFIX}/health")
     async def health():
@@ -153,6 +183,13 @@ def _default_alert_store_factory():
     from chc.alerts import AlertStore
 
     return AlertStore(db_path=os.environ.get("ALERTS_DB", "./cyber_health_check.db"))
+
+
+def _default_org_store_factory():
+    """Org/user store backed by the configured SQLite database."""
+    import os
+
+    return OrgStore(db_path=os.environ.get("ORGS_DB", "./cyber_health_check.db"))
 
 
 app = create_app()
