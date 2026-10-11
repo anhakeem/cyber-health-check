@@ -6,28 +6,28 @@ tasks:
   - id: competitor-research
     phase: research
     agent: researcher
-    status: pending
+    status: complete
     depends_on: []
     output: results/market-research.md
 
   - id: threat-intel-research
     phase: research
     agent: researcher
-    status: pending
+    status: complete
     depends_on: []
     output: results/threat-intel-sources.md
 
   - id: architecture
     phase: design
     agent: architect
-    status: pending
+    status: complete
     depends_on: [competitor-research, threat-intel-research]
     output: docs/architecture.md
 
   - id: privacy-design
     phase: design
     agent: architect
-    status: pending
+    status: complete
     depends_on: [architecture]
     output: docs/privacy-threat-model.md
 
