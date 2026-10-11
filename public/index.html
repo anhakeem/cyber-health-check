@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cyber Health Check — Team Dashboard</title>
+<style>
+  :root {
+    --bg: #0b1120; --panel: #131c31; --panel-2: #1b2540; --border: #26324f;
+    --text: #e7ecf5; --muted: #8ea0c0; --accent: #22d3ee;
+    --green: #34d399; --amber: #fbbf24; --danger: #fb7185; --crit: #f43f5e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 20px 80px; }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 24px; letter-spacing: -0.4px; }
+  h1 .dot { color: var(--accent); }
+  .badge { font-size: 11px; color: var(--muted); border: 1px solid var(--border);
+           border-radius: 999px; padding: 2px 9px; }
+  .sub { color: var(--muted); margin: 6px 0 24px; }
+  .controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: end;
+              background: var(--panel); border: 1px solid var(--border);
+              border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+  .controls > div { flex: 1 1 160px; }
+  label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+          color: var(--muted); margin-bottom: 6px; }
+  input, select { width: 100%; background: var(--panel-2); color: var(--text);
+                  border: 1px solid var(--border); border-radius: 7px; padding: 9px; font: inherit; }
+  button { cursor: pointer; background: linear-gradient(180deg, var(--accent), #0891b2);
+           color: #04212b; border: 0; border-radius: 7px; padding: 10px 16px; font: 600 14px/1 inherit; }
+  button.ghost { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+           gap: 12px; margin-bottom: 20px; }
+  .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+  .stat .n { font-size: 26px; font-weight: 700; }
+  .stat .l { color: var(--muted); font-size: 12px; }
+  .stat.crit .n { color: var(--crit); } .stat.high .n { color: var(--danger); }
+  .stat.med .n { color: var(--amber); } .stat.low .n { color: var(--green); }
+  table { width: 100%; border-collapse: collapse; background: var(--panel);
+          border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border);
+           font-size: 13px; vertical-align: top; }
+  th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  tr:last-child td { border-bottom: 0; }
+  .pill { display: inline-block; font-size: 11px; padding: 2px 9px; border-radius: 999px;
+          border: 1px solid var(--border); }
+  .pill.critical { border-color: var(--crit); color: var(--crit); }
+  .pill.high { border-color: var(--danger); color: var(--danger); }
+  .pill.medium { border-color: var(--amber); color: var(--amber); }
+  .pill.low { border-color: var(--green); color: var(--green); }
+  .ind { word-break: break-all; color: var(--text); }
+  .empty { color: var(--muted); padding: 28px; text-align: center; }
+  .err { color: var(--danger); }
+  .pager { display: flex; gap: 10px; align-items: center; justify-content: flex-end;
+           margin-top: 12px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Cyber Health Check <span class="dot">·</span> Team Dashboard</h1>
+    <span class="badge" id="api-badge">checking API…</span>
+  </header>
+  <p class="sub">Real-time web-threat alerts across your organization.</p>
+
+  <div class="controls">
+    <div>
+      <label for="org">Organization ID</label>
+      <input id="org" placeholder="e.g. acme" value="acme" />
+    </div>
+    <div>
+      <label for="severity">Severity</label>
+      <select id="severity">
+        <option value="">All</option>
+        <option value="critical">Critical</option>
+        <option value="high">High</option>
+        <option value="medium">Medium</option>
+        <option value="low">Low</option>
+      </select>
+    </div>
+    <div>
+      <label for="limit">Page size</label>
+      <input id="limit" type="number" min="1" max="500" value="25" />
+    </div>
+    <div style="flex:0 0 auto;"><button id="refresh">Refresh</button></div>
+    <div style="flex:0 0 auto;"><button id="demo" class="ghost">Load demo</button></div>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <table>
+    <thead>
+      <tr><th>Severity</th><th>Verdict</th><th>Category</th><th>Indicator</th><th>When</th></tr>
+    </thead>
+    <tbody id="rows"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+  </table>
+
+  <div class="pager">
+    <span id="pageinfo"></span>
+    <button id="prev" class="ghost">Prev</button>
+    <button id="next" class="ghost">Next</button>
+  </div>
+</div>
+
+<script>
+const API = window.CHC_API || "http://localhost:8098";
+const $ = (id) => document.getElementById(id);
+let offset = 0;
+
+async function checkHealth() {
+  try {
+    const r = await fetch(`${API}/api/v1/health`);
+    $("api-badge").textContent = r.ok ? "API online" : "API error";
+  } catch { $("api-badge").textContent = "API offline"; }
+}
+
+function fmtTime(iso) {
+  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+}
+
+function renderStats(alerts) {
+  const c = { critical: 0, high: 0, medium: 0, low: 0 };
+  for (const a of alerts) if (a.severity in c) c[a.severity]++;
+  $("stats").innerHTML = `
+    <div class="stat crit"><div class="n">${c.critical}</div><div class="l">Critical (page)</div></div>
+    <div class="stat high"><div class="n">${c.high}</div><div class="l">High</div></div>
+    <div class="stat med"><div class="n">${c.medium}</div><div class="l">Medium</div></div>
+    <div class="stat low"><div class="n">${c.low}</div><div class="l">Low</div></div>`;
+}
+
+function renderRows(alerts) {
+  const tbody = $("rows");
+  if (!alerts.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">No alerts for this filter.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = alerts.map((a) => `
+    <tr>
+      <td><span class="pill ${a.severity}">${a.severity}</span></td>
+      <td>${a.verdict}</td>
+      <td>${a.category || "—"}</td>
+      <td class="ind">${a.indicator}</td>
+      <td>${fmtTime(a.created_at)}</td>
+    </tr>`).join("");
+}
+
+async function load() {
+  const org = $("org").value.trim();
+  if (!org) { $("rows").innerHTML = '<tr><td colspan="5" class="err">Enter an organization ID.</td></tr>'; return; }
+  const params = new URLSearchParams({ org_id: org, limit: $("limit").value, offset: String(offset) });
+  if ($("severity").value) params.set("severity", $("severity").value);
+  try {
+    const r = await fetch(`${API}/api/v1/alerts?${params}`);
+    const data = await r.json();
+    if (!r.ok) { $("rows").innerHTML = `<tr><td colspan="5" class="err">${data?.error?.message || "Request failed"}</td></tr>`; return; }
+    renderRows(data.alerts);
+    renderStats(data.alerts);
+    const p = data.pagination;
+    $("pageinfo").textContent = `${p.offset + 1}–${Math.min(p.offset + p.limit, p.total)} of ${p.total}`;
+    $("prev").disabled = p.offset === 0;
+    $("next").disabled = p.offset + p.limit >= p.total;
+  } catch {
+    $("rows").innerHTML = '<tr><td colspan="5" class="err">Network error — is the API running?</td></tr>';
+  }
+}
+
+// Demo: seed the local view with sample alerts (no backend needed).
+function loadDemo() {
+  const now = Date.now();
+  const sample = [
+    { severity: "critical", verdict: "malicious", category: "phishing", indicator: "https://login-microsoftonline.verify-secure.example/auth", created_at: new Date(now - 60000).toISOString() },
+    { severity: "high", verdict: "malicious", category: "malware", indicator: "https://cdn.updates-patch.example/setup.exe", created_at: new Date(now - 600000).toISOString() },
+    { severity: "medium", verdict: "suspicious", category: "lookalike", indicator: "https://paypa1-secure.example/session", created_at: new Date(now - 3600000).toISOString() },
+    { severity: "low", verdict: "suspicious", category: "redirect", indicator: "https://track.ad-network.example/click?id=88", created_at: new Date(now - 7200000).toISOString() },
+  ];
+  renderRows(sample); renderStats(sample);
+  $("pageinfo").textContent = `demo · ${sample.length} sample alerts`;
+}
+
+$("refresh").addEventListener("click", () => { offset = 0; load(); });
+$("severity").addEventListener("change", () => { offset = 0; load(); });
+$("prev").addEventListener("click", () => { offset = Math.max(0, offset - parseInt($("limit").value, 10)); load(); });
+$("next").addEventListener("click", () => { offset += parseInt($("limit").value, 10); load(); });
+$("demo").addEventListener("click", loadDemo);
+checkHealth();
+load();
+</script>
+</body>
+</html>

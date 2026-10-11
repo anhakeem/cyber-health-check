@@ -62,11 +62,13 @@ def _safe_errors(exc: RequestValidationError) -> list[dict]:
     return out
 
 
-def create_app(reputation_factory=None) -> FastAPI:
+def create_app(reputation_factory=None, alert_store_factory=None) -> FastAPI:
     app = FastAPI(title="Cyber Health Check API", version="1.0.0")
 
     if reputation_factory is None:
         reputation_factory = _default_reputation_factory
+    if alert_store_factory is None:
+        alert_store_factory = _default_alert_store_factory
 
     cache: dict[str, object] = {}
 
@@ -74,6 +76,11 @@ def create_app(reputation_factory=None) -> FastAPI:
         if "svc" not in cache:
             cache["svc"] = reputation_factory()
         return cache["svc"]
+
+    def get_alert_store():
+        if "alerts" not in cache:
+            cache["alerts"] = alert_store_factory()
+        return cache["alerts"]
 
     @app.exception_handler(RequestValidationError)
     async def _validation_handler(request: Request, exc: RequestValidationError):
@@ -105,6 +112,21 @@ def create_app(reputation_factory=None) -> FastAPI:
     async def check_domain(req: CheckDomainRequest):
         return _verdict_response(req.domain, "domain")
 
+    @app.get(f"{API_PREFIX}/alerts")
+    async def alerts(org_id: str, severity: str | None = None, since: str | None = None,
+                     limit: int = 50, offset: int = 0):
+        store = get_alert_store()
+        rows = store.list(org_id=org_id, severity=severity, since=since,
+                          limit=limit, offset=offset)
+        return {
+            "alerts": rows,
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "total": store.count(org_id=org_id, severity=severity),
+            },
+        }
+
     @app.get(f"{API_PREFIX}/health")
     async def health():
         return {"status": "ok"}
@@ -122,6 +144,15 @@ def _default_reputation_factory():
     # Feed registration happens in deployment wiring once API keys are set;
     # the service is constructed from the ingestor so gating always applies.
     return ReputationService(feeds=ingestor)
+
+
+def _default_alert_store_factory():
+    """Alert store backed by the configured SQLite database."""
+    import os
+
+    from chc.alerts import AlertStore
+
+    return AlertStore(db_path=os.environ.get("ALERTS_DB", "./cyber_health_check.db"))
 
 
 app = create_app()
