@@ -1,53 +1,142 @@
+# Cyber Health Check — Project Definition
+# ~/.hermes/projects/cyber-health-check/project.yaml
+
 name: cyber-health-check
 description: Browser extension for real-time cybersecurity threat alerts
 version: 1.0.0
 author: anhakeem
 license: MIT
 
-# Project metadata
+goal: >
+  Ship a browser extension + dashboard that gives corporate teams real-time
+  visibility into the web threats their users encounter: phishing, malicious
+  domains, credential-entry on lookalike sites, and known-bad IPs. MVP = threat
+  engine + extension + team dashboard. Then enterprise: RBAC, SIEM integrations,
+  compliance reporting. Monetize per-seat subscription.
+
+source: https://www.loot-drop.io/ideas.html  # 29 upvotes
+owner_edge: >
+  Owner runs a Kali red-team lab + pfSense/Pi-hole/dnscrypt home-lab and holds
+  CCNP Enterprise. Threat intel and network security are first-hand skills.
+
 tags:
   - cybersecurity
   - browser-extension
   - b2b
   - enterprise
 
-# Development phases
 phases:
-  - name: mvp
-    description: Core threat detection engine + browser extension
-    status: in_progress
+  - name: research
+    tasks:
+      - id: competitor-research
+        description: "Map the browser-security market + pricing (existing EDR/extension tools)"
+        agent: researcher
+        output: results/market-research.md
+        depends_on: []
+        success_criteria: "≥5 competitors with pricing + gap analysis"
+
+      - id: threat-intel-research
+        description: "Evaluate free/paid threat intel feeds + licensing for commercial use"
+        agent: researcher
+        output: results/threat-intel-sources.md
+        depends_on: []
+        success_criteria: "≥3 feeds with commercial-use terms + rate limits documented"
+
+  - name: design
+    tasks:
+      - id: architecture
+        description: "Design threat engine, extension messaging, and API contract"
+        agent: architect
+        output: docs/architecture.md
+        depends_on: [competitor-research, threat-intel-research]
+        success_criteria: "Threat pipeline + API contract + data model specified"
+
+      - id: privacy-design
+        description: "Design privacy model (what telemetry leaves the browser) + threat model"
+        agent: architect
+        output: docs/privacy-threat-model.md
+        depends_on: [architecture]
+        success_criteria: "Data-flow diagram + STRIDE threat model complete"
+
+  - name: implementation
     tasks:
       - id: threat-engine
-        description: Build threat detection and alerting engine
-        status: pending
-      - id: extension-mvp
-        description: Chrome extension with real-time monitoring
-        status: pending
+        description: "Domain/IP reputation engine with feed ingestion + caching"
+        agent: developer
+        output: src/
+        depends_on: [architecture]
+        success_criteria: "Unit tests pass; feeds ingest + query returns verdicts"
+
+      - id: api
+        description: "FastAPI endpoints: check-url, check-domain, alerts"
+        agent: developer
+        output: src/api/
+        depends_on: [threat-engine]
+        success_criteria: "All endpoints pass contract tests"
+
+      - id: extension
+        description: "MV3 extension: real-time URL checks + alert badge"
+        agent: developer
+        output: extension/
+        depends_on: [api]
+        success_criteria: "Loads unpacked; blocks/alerts on a known-bad test URL"
+
       - id: dashboard
-        description: Corporate team dashboard for threat visibility
-        status: pending
+        description: "Team dashboard: alert feed + threat visibility"
+        agent: developer
+        output: public/
+        depends_on: [api]
+        success_criteria: "Dashboard renders live alerts end-to-end"
+
+  - name: testing
+    tasks:
+      - id: test
+        description: "Unit + integration + security tests"
+        agent: tester
+        output: results/test-results.md
+        depends_on: [extension, dashboard]
+        success_criteria: "All tests pass; core coverage > 80%"
 
   - name: enterprise
-    description: Enterprise features and B2B onboarding
-    status: pending
     tasks:
       - id: team-management
-        description: Team management and role-based access
-        status: pending
-      - id: integrations
-        description: SIEM integrations (Splunk, ELK, etc.)
-        status: pending
-      - id: reporting
-        description: Compliance reporting and audit trails
-        status: pending
+        description: "RBAC + multi-tenant org model"
+        agent: developer
+        output: src/auth/
+        depends_on: [test]
+        success_criteria: "Roles enforced; tenant isolation tested"
+
+      - id: siem-integrations
+        description: "SIEM export (Splunk HEC, ELK, syslog)"
+        agent: developer
+        output: src/integrations/
+        depends_on: [team-management]
+        success_criteria: "Events land in a mock SIEM sink"
+
+      - id: compliance-reporting
+        description: "Audit trails + compliance report export"
+        agent: developer
+        output: src/reports/
+        depends_on: [siem-integrations]
+        success_criteria: "Report generated from audit log"
+
+  - name: improvement
+    tasks:
+      - id: security-review
+        description: "Security review of the product itself (dogfood the Kali lab)"
+        agent: reviewer
+        output: results/security-review.md
+        depends_on: [compliance-reporting]
+        success_criteria: "No critical findings; secrets scan clean"
 
 # Tech stack
 stack:
-  backend: python
+  backend: python 3.11
   framework: fastapi
-  extension: javascript-chrome-extension
-  database: sqlite-postgres
-  threat_intel: misp-abuse-chdb
+  extension: chrome-manifest-v3
+  database: sqlite (mvp) -> postgres (scale)
+  threat_intel: [abuseipdb, urlhaus, openphish, misp]
+  auth: jwt + oauth2
 
 # Monetization
 monetization:
@@ -62,9 +151,3 @@ monetization:
     - name: enterprise
       price: custom
       features: unlimited users, SIEM integrations, compliance reporting
-
-# Sources
-sources:
-  - https://www.loot-drop.io/ideas.html
-  - Upvotes: 29
-  - Leverages user's Kali/red-team security infrastructure

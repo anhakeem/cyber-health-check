@@ -1,0 +1,95 @@
+# Cyber Health Check — Task Queue
+# ~/.hermes/projects/cyber-health-check/tasks.yaml
+# status: pending | assigned | in_progress | review | complete | blocked
+
+tasks:
+  - id: competitor-research
+    phase: research
+    agent: researcher
+    status: pending
+    depends_on: []
+    output: results/market-research.md
+
+  - id: threat-intel-research
+    phase: research
+    agent: researcher
+    status: pending
+    depends_on: []
+    output: results/threat-intel-sources.md
+
+  - id: architecture
+    phase: design
+    agent: architect
+    status: pending
+    depends_on: [competitor-research, threat-intel-research]
+    output: docs/architecture.md
+
+  - id: privacy-design
+    phase: design
+    agent: architect
+    status: pending
+    depends_on: [architecture]
+    output: docs/privacy-threat-model.md
+
+  - id: threat-engine
+    phase: implementation
+    agent: developer
+    status: pending
+    depends_on: [architecture]
+    output: src/
+
+  - id: api
+    phase: implementation
+    agent: developer
+    status: pending
+    depends_on: [threat-engine]
+    output: src/api/
+
+  - id: extension
+    phase: implementation
+    agent: developer
+    status: pending
+    depends_on: [api]
+    output: extension/
+
+  - id: dashboard
+    phase: implementation
+    agent: developer
+    status: pending
+    depends_on: [api]
+    output: public/
+
+  - id: test
+    phase: testing
+    agent: tester
+    status: pending
+    depends_on: [extension, dashboard]
+    output: results/test-results.md
+
+  - id: team-management
+    phase: enterprise
+    agent: developer
+    status: pending
+    depends_on: [test]
+    output: src/auth/
+
+  - id: siem-integrations
+    phase: enterprise
+    agent: developer
+    status: pending
+    depends_on: [team-management]
+    output: src/integrations/
+
+  - id: compliance-reporting
+    phase: enterprise
+    agent: developer
+    status: pending
+    depends_on: [siem-integrations]
+    output: src/reports/
+
+  - id: security-review
+    phase: improvement
+    agent: reviewer
+    status: pending
+    depends_on: [compliance-reporting]
+    output: results/security-review.md
