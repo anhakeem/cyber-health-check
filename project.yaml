@@ -1,0 +1,70 @@
+name: cyber-health-check
+description: Browser extension for real-time cybersecurity threat alerts
+version: 1.0.0
+author: anhakeem
+license: MIT
+
+# Project metadata
+tags:
+  - cybersecurity
+  - browser-extension
+  - b2b
+  - enterprise
+
+# Development phases
+phases:
+  - name: mvp
+    description: Core threat detection engine + browser extension
+    status: in_progress
+    tasks:
+      - id: threat-engine
+        description: Build threat detection and alerting engine
+        status: pending
+      - id: extension-mvp
+        description: Chrome extension with real-time monitoring
+        status: pending
+      - id: dashboard
+        description: Corporate team dashboard for threat visibility
+        status: pending
+
+  - name: enterprise
+    description: Enterprise features and B2B onboarding
+    status: pending
+    tasks:
+      - id: team-management
+        description: Team management and role-based access
+        status: pending
+      - id: integrations
+        description: SIEM integrations (Splunk, ELK, etc.)
+        status: pending
+      - id: reporting
+        description: Compliance reporting and audit trails
+        status: pending
+
+# Tech stack
+stack:
+  backend: python
+  framework: fastapi
+  extension: javascript-chrome-extension
+  database: sqlite-postgres
+  threat_intel: misp-abuse-chdb
+
+# Monetization
+monetization:
+  model: subscription
+  tiers:
+    - name: starter
+      price: $29/month
+      features: 5 users, basic alerts
+    - name: professional
+      price: $99/month
+      features: 25 users, advanced analytics, API access
+    - name: enterprise
+      price: custom
+      features: unlimited users, SIEM integrations, compliance reporting
+
+# Sources
+sources:
+  - https://www.loot-drop.io/ideas.html
+  - Upvotes: 29
+  - Leverages user's Kali/red-team security infrastructure
