@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Cyber Health Check",
+  "version": "1.0.0",
+  "description": "Real-time web-threat alerts for your team — phishing, malicious domains, lookalike sites.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Cyber Health Check"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "permissions": ["storage", "activeTab", "alarms"],
+  "host_permissions": ["http://localhost:8098/*"],
+  "icons": {
+    "16": "icons/16.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  }
+}

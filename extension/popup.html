@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<style>
+  :root {
+    --bg: #0b1120; --panel: #131c31; --border: #26324f; --text: #e7ecf5;
+    --muted: #8ea0c0; --green: #34d399; --amber: #fbbf24; --danger: #fb7185;
+  }
+  * { box-sizing: border-box; }
+  body {
+    width: 340px; margin: 0; padding: 14px; background: var(--bg); color: var(--text);
+    font: 13px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  h1 { font-size: 15px; margin: 0 0 2px; }
+  .badge { font-size: 10px; color: var(--muted); border: 1px solid var(--border);
+           border-radius: 999px; padding: 1px 7px; margin-left: 6px; }
+  .verdict { margin-top: 12px; padding: 12px; border-radius: 8px; border: 1px solid var(--border);
+             background: var(--panel); }
+  .verdict .v { font-size: 18px; font-weight: 700; }
+  .verdict .u { color: var(--muted); font-size: 11px; word-break: break-all; margin-top: 4px; }
+  .malicious { border-color: var(--danger); } .malicious .v { color: var(--danger); }
+  .suspicious { border-color: var(--amber); } .suspicious .v { color: var(--amber); }
+  .clean { border-color: var(--green); } .clean .v { color: var(--green); }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+       margin: 16px 0 6px; }
+  .alert { border-left: 2px solid var(--border); padding: 5px 0 5px 9px; margin-bottom: 7px; }
+  .alert.malicious { border-color: var(--danger); }
+  .alert.suspicious { border-color: var(--amber); }
+  .alert .i { font-size: 11px; word-break: break-all; }
+  .alert .t { color: var(--muted); font-size: 10px; }
+  .empty { color: var(--muted); font-size: 12px; }
+  .error { color: var(--danger); }
+</style>
+</head>
+<body>
+  <h1>Cyber Health Check<span class="badge" id="badge">checking…</span></h1>
+
+  <div class="verdict" id="verdict">
+    <div class="v">Checking…</div>
+    <div class="u" id="url"></div>
+  </div>
+
+  <h2>Recent alerts</h2>
+  <div id="alerts"><div class="empty">No alerts yet.</div></div>
+</body>
+<script src="popup.js"></script>
+</html>
