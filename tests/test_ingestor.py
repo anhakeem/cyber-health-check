@@ -16,6 +16,7 @@ class _DummyFeed:
     def __init__(self, feed_id: str, commercial_ok: bool):
         self.id = feed_id
         self.commercial_ok = commercial_ok
+        self.kinds = frozenset({"url", "domain", "ip"})
         self.lookup_calls = []
 
     def lookup(self, indicator, kind) -> FeedVerdict | None:

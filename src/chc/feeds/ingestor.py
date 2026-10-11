@@ -17,7 +17,7 @@ class FeedIngestor:
 
     def enable(self, feed_id: str) -> None:
         feed = self._feeds[feed_id]
-        if not feed.commercial_ok and self.tier != "dev":
+        if feed.commercial_ok is not True and self.tier != "dev":
             raise PermissionError(
                 f"feed {feed_id!r} is commercial_ok=False; "
                 f"only tier 'dev' may enable it"

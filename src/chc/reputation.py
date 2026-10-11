@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import ipaddress
 import re
+import socket
+import struct
 import time
 from dataclasses import dataclass, field, replace
 from urllib.parse import urlsplit
@@ -23,22 +25,121 @@ _PRIVATE_NETS = [
     ipaddress.ip_network("169.254.0.0/16"),
     ipaddress.ip_network("0.0.0.0/8"),
     ipaddress.ip_network("100.64.0.0/10"),  # CGNAT
+    ipaddress.ip_network("192.0.0.0/24"),   # IETF protocol assignments
+    ipaddress.ip_network("192.0.2.0/24"),   # TEST-NET-1
+    ipaddress.ip_network("198.18.0.0/15"),  # benchmarking
+    ipaddress.ip_network("198.51.100.0/24"),  # TEST-NET-2
+    ipaddress.ip_network("203.0.113.0/24"),  # TEST-NET-3
+    ipaddress.ip_network("224.0.0.0/4"),    # multicast
+    ipaddress.ip_network("240.0.0.0/4"),    # reserved
+    ipaddress.ip_network("255.255.255.255/32"),  # broadcast
     ipaddress.ip_network("::1/128"),
     ipaddress.ip_network("fe80::/10"),
     ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("ff00::/8"),
+    ipaddress.ip_network("fec0::/10"),
+    ipaddress.ip_network("2001:db8::/32"),  # documentation
+    ipaddress.ip_network("100::/64"),       # discard-only
 ]
 
 _METADATA_IPS = {"169.254.169.254"}
+
+
+def _parse_ipv4_alternative(host: str) -> ipaddress.IPv4Address | None:
+    """Try to parse alternative IPv4 spellings (decimal, hex, octal, short).
+
+    Returns the IPv4Address if the host is a valid alternative spelling,
+    or None if it's not an IP literal at all.
+    """
+    # Strict dotted quad — already handled by ipaddress.ip_address
+    try:
+        ip = ipaddress.ip_address(host)
+        if isinstance(ip, ipaddress.IPv4Address):
+            return ip
+    except ValueError:
+        pass
+
+    # Decimal integer: "2130706433"
+    if re.fullmatch(r"\d+", host):
+        try:
+            return ipaddress.ip_address(int(host))
+        except (ValueError, struct.error):
+            pass
+
+    # Mixed octets: "0x7f.0.0.1", "0177.0.0.1", "127.1", etc.
+    # Each part can be decimal, hex (0x...), or octal (0...).
+    if re.fullmatch(r"[0-9a-fA-Fx.]+", host) and "." in host:
+        try:
+            parts = host.split(".")
+            if len(parts) > 4:
+                return None
+            octets = []
+            for p in parts:
+                if p.startswith("0x") or p.startswith("0X"):
+                    val = int(p, 16)
+                elif len(p) > 1 and p.startswith("0"):
+                    val = int(p, 8)
+                else:
+                    val = int(p)
+                if val < 0 or val > 255:
+                    return None
+                octets.append(val)
+            # Pad short forms: "127.1" -> [127, 0, 0, 1]
+            while len(octets) < 4:
+                octets.insert(-1, 0)
+            if len(octets) == 4:
+                return ipaddress.IPv4Address(".".join(str(o) for o in octets))
+        except (ValueError, struct.error):
+            pass
+
+    return None
 
 
 def _is_private_host(host: str) -> bool:
     host = host.strip("[]").lower()
     if host in _METADATA_IPS:
         return True
+
+    # Try strict IP parse first
     try:
         ip = ipaddress.ip_address(host)
     except ValueError:
-        return False  # DNS name, not an IP literal
+        # Try alternative IPv4 spellings
+        alt_ip = _parse_ipv4_alternative(host)
+        if alt_ip is not None:
+            ip = alt_ip
+        else:
+            return False  # DNS name, not an IP literal
+
+    # Unwrap IPv6-embedded IPv4
+    if isinstance(ip, ipaddress.IPv6Address):
+        # IPv4-mapped: ::ffff:a.b.c.d
+        if ip.ipv4_mapped is not None:
+            ip = ip.ipv4_mapped
+        # 6to4: 2002:aabb:ccdd::/48
+        elif ip.sixtofour is not None:
+            ip = ip.sixtofour
+        # Teredo: 2001:0000:server:client
+        elif ip.teredo is not None:
+            server, client = ip.teredo
+            if not server.is_global or not client.is_global:
+                return True
+        # NAT64: 64:ff9b::/96
+        elif ip.packed[:12] == b"\x00\x64\xff\x9b" + b"\x00" * 8:
+            embedded = ipaddress.ip_address(ip.packed[12:])
+            if isinstance(embedded, ipaddress.IPv4Address) and not embedded.is_global:
+                return True
+        # IPv4-compatible: ::/96 (deprecated)
+        elif ip.packed[:12] == b"\x00" * 12:
+            embedded = ipaddress.ip_address(ip.packed[12:])
+            if isinstance(embedded, ipaddress.IPv4Address) and not embedded.is_global:
+                return True
+
+    # Reject anything that isn't a global IP
+    if not ip.is_global:
+        return True
+
+    # Also check against our explicit denylist
     return any(ip in net for net in _PRIVATE_NETS)
 
 
@@ -88,6 +189,16 @@ def normalize_domain(raw: str) -> str:
     host = s.split("/")[0].split("?")[0].split("#")[0].lower().lstrip(".")
     if not host or not re.fullmatch(r"[a-z0-9.\-]+", host):
         raise ValueError(f"invalid domain indicator {raw!r}")
+    # Validate each label
+    labels = host.split(".")
+    for label in labels:
+        if not label or len(label) > 63:
+            raise ValueError(f"invalid domain indicator {raw!r}")
+        if label.startswith("-") or label.endswith("-"):
+            raise ValueError(f"invalid domain indicator {raw!r}")
+        if not re.fullmatch(r"[a-z0-9\-]+", label):
+            raise ValueError(f"invalid domain indicator {raw!r}")
+    # Reject alternative IPv4 spellings and private IPs
     if _is_private_host(host):
         raise ValueError(f"host {host!r} is a private/reserved address")
     return host
@@ -136,25 +247,70 @@ class ReputationService:
     URL — SSRF-safe by construction."""
 
     def __init__(self, feeds, ttl: float = 3600, clock=time.monotonic):
-        self.feeds = list(feeds)
+        # Accept either a FeedIngestor or an iterable of feeds
+        if hasattr(feeds, "enabled"):
+            # FeedIngestor has already enforced commercial_ok gating
+            feed_list = list(feeds.enabled())
+        else:
+            feed_list = list(feeds)
+            # Enforce commercial_ok gating: every feed must have commercial_ok is True
+            for feed in feed_list:
+                if feed.commercial_ok is not True:
+                    raise PermissionError(
+                        f"feed {feed.id!r} has commercial_ok={feed.commercial_ok!r}; "
+                        f"only commercial_ok=True feeds are allowed"
+                    )
+        self.feeds = feed_list
         self.ttl = ttl
         self._clock = clock
         self._cache: dict[tuple[str, str], tuple[MergedVerdict, float]] = {}
 
     def check(self, indicator: str, kind: IndicatorKind | None = None) -> MergedVerdict:
+        # Infer kind if not provided
+        if kind is None:
+            kind = kind_of(indicator)
+
+        # Validate based on kind
         if kind == "url":
             indicator = normalize_url(indicator)
         elif kind == "domain":
             indicator = normalize_domain(indicator)
-        key = (kind or "unknown", indicator)
+        elif kind == "ip":
+            # Validate as IP — reject private/reserved
+            try:
+                ip = ipaddress.ip_address(indicator)
+            except ValueError:
+                raise ValueError(f"invalid IP indicator {indicator!r}")
+            if not ip.is_global:
+                raise ValueError(f"IP {indicator!r} is not a global address")
+            # Also check against denylist
+            if any(ip in net for net in _PRIVATE_NETS):
+                raise ValueError(f"IP {indicator!r} is in a reserved range")
+        else:
+            raise ValueError(f"unknown indicator kind {kind!r}")
+
+        key = (kind, indicator)
         now = self._clock()
         if key in self._cache:
             verdict, expires = self._cache[key]
             if now < expires:
                 return replace(verdict, cached=True)
-        feed_verdicts = [
-            v for f in self.feeds if (v := f.lookup(indicator, kind or "unknown")) is not None
-        ]
+
+        # Query only feeds that support this kind, with failure isolation
+        feed_verdicts = []
+        for f in self.feeds:
+            # Check if feed supports this kind
+            feed_kinds = getattr(f, "kinds", None)
+            if feed_kinds is not None and kind not in feed_kinds:
+                continue
+            try:
+                v = f.lookup(indicator, kind)
+                if v is not None:
+                    feed_verdicts.append(v)
+            except Exception:
+                # Isolate feed failures — one bad feed must not kill the check
+                continue
+
         merged = merge_verdicts(feed_verdicts)
         self._cache[key] = (merged, now + self.ttl)
         return merged

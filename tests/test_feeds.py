@@ -27,11 +27,11 @@ def test_phishtank_commercial_ok():
 
 
 def test_phishtank_lookup_malicious(monkeypatch):
-    def fake_get(url, **kw):
+    def fake_post(url, **kw):
         assert "phishtank" in url
-        return _json_response({"results": {"in_db": True, "verified": True}})
+        return _json_response({"results": {"in_database": True, "valid": True, "verified": True}})
 
-    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr(httpx, "post", fake_post)
     feed = PhishTankFeed(api_key="k", client=httpx.Client())
     v = feed.lookup("https://bad.example/", "url")
     assert v is not None
@@ -40,7 +40,7 @@ def test_phishtank_lookup_malicious(monkeypatch):
 
 
 def test_phishtank_lookup_not_in_db(monkeypatch):
-    monkeypatch.setattr(httpx, "get", lambda url, **kw: _json_response({"results": {"in_db": False}}))
+    monkeypatch.setattr(httpx, "post", lambda url, **kw: _json_response({"results": {"in_database": False, "valid": False}}))
     feed = PhishTankFeed(api_key="k", client=httpx.Client())
     v = feed.lookup("https://good.example/", "url")
     assert v is not None
@@ -62,11 +62,11 @@ def test_misp_commercial_ok():
 
 
 def test_misp_lookup_malicious(monkeypatch):
-    def fake_get(url, **kw):
+    def fake_post(url, **kw):
         assert "misp" in url
-        return _json_response({"response": [{"Attribute": [{"type": "domain", "to_ids": True}]}]})
+        return _json_response({"response": {"Attribute": [{"type": "domain", "to_ids": True}]}})
 
-    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr(httpx, "post", fake_post)
     feed = MISPFeed(url="https://misp.example", api_key="k", client=httpx.Client())
     v = feed.lookup("bad.example", "domain")
     assert v is not None
@@ -75,7 +75,7 @@ def test_misp_lookup_malicious(monkeypatch):
 
 
 def test_misp_lookup_no_match(monkeypatch):
-    monkeypatch.setattr(httpx, "get", lambda url, **kw: _json_response({"response": []}))
+    monkeypatch.setattr(httpx, "post", lambda url, **kw: _json_response({"response": {"Attribute": []}}))
     feed = MISPFeed(url="https://misp.example", api_key="k", client=httpx.Client())
     v = feed.lookup("good.example", "domain")
     assert v is None

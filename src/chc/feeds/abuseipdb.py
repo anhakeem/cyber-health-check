@@ -14,6 +14,7 @@ class AbuseIPDBFeed:
         self.commercial_ok = True
         self.api_key = api_key
         self._client = client or httpx.Client()
+        self.kinds = frozenset({"ip"})
 
     def lookup(self, indicator: str, kind: IndicatorKind) -> FeedVerdict | None:
         url = "https://api.abuseipdb.com/api/v2/check"

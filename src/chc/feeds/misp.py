@@ -1,4 +1,9 @@
-"""MISP feed adapter (commercial-safe, AGPL use-as-is)."""
+"""MISP feed adapter (commercial-safe, AGPL use-as-is).
+
+API: POST /attributes/restSearch with JSON body.
+Response JSON: {"response": {"Attribute": [...]}}
+Source: https://www.circl.lu/doc/misp/automation
+"""
 from __future__ import annotations
 
 import httpx
@@ -13,16 +18,24 @@ class MISPFeed:
         self.url = url.rstrip("/")
         self.api_key = api_key
         self._client = client or httpx.Client()
+        self.kinds = frozenset({"url", "domain", "ip"})
 
     def lookup(self, indicator: str, kind: IndicatorKind) -> FeedVerdict | None:
         url = f"{self.url}/attributes/restSearch"
         headers = {"Authorization": self.api_key, "Accept": "application/json"}
-        payload = {"value": indicator, "type": "domain" if kind == "domain" else "url"}
-        resp = httpx.get(url, headers=headers, params=payload, timeout=10)
+        payload = {"value": indicator}
+        resp = httpx.post(url, headers=headers, json=payload, timeout=10)
         resp.raise_for_status()
         data = resp.json()
-        response = data.get("response", [])
-        if response:
+        response = data.get("response", {})
+        # response is a dict with an "Attribute" key containing a list
+        if isinstance(response, dict):
+            attributes = response.get("Attribute", [])
+        elif isinstance(response, list):
+            attributes = response
+        else:
+            attributes = []
+        if attributes:
             return FeedVerdict(verdict="malicious", category="c2", confidence=0.8, source=self.id)
         return None
 

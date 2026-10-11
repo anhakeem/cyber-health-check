@@ -20,6 +20,7 @@ class FeedVerdict:
 class ThreatFeed(Protocol):
     id: str
     commercial_ok: bool
+    kinds: frozenset[IndicatorKind]
 
     def lookup(self, indicator: str, kind: IndicatorKind) -> FeedVerdict | None: ...
 
