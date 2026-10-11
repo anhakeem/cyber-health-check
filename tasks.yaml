@@ -34,7 +34,7 @@ tasks:
   - id: threat-engine
     phase: implementation
     agent: developer
-    status: pending
+    status: complete
     depends_on: [architecture]
     output: src/
 
@@ -55,7 +55,7 @@ tasks:
   - id: dashboard
     phase: implementation
     agent: developer
-    status: pending
+    status: complete
     depends_on: [api]
     output: public/
 
