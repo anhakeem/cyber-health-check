@@ -1,8 +1,11 @@
 // Cyber Health Check — content script.
 //
-// Reports the URL the browser lands on to the service worker for a reputation
-// check, and renders a warning banner if the verdict is bad. It NEVER reads
-// page content, cookies, or form data — only location.href.
+// Reports the URL the browser lands on to the background worker for a
+// reputation check, and renders a warning banner if the verdict is bad. It
+// NEVER reads page content, cookies, or form data — only location.href.
+//
+// Cross-browser: `ext.sendMessage` from browser-compat.js (loaded before this
+// file by the manifest in both Chrome and Firefox).
 
 let bannerEl = null;
 
@@ -33,14 +36,13 @@ function showBanner(data) {
   document.documentElement.appendChild(bannerEl);
 }
 
-function report() {
+async function report() {
   const url = location.href;
   if (!url.startsWith("http")) return;
-  chrome.runtime.sendMessage({ type: "CHECK_URL", url }, (resp) => {
-    if (chrome.runtime.lastError || !resp?.ok) return;
-    const v = resp.data?.verdict;
-    if (v === "malicious" || v === "suspicious") showBanner(resp.data);
-  });
+  const resp = await ext.sendMessage({ type: "CHECK_URL", url });
+  if (!resp?.ok) return;
+  const v = resp.data?.verdict;
+  if (v === "malicious" || v === "suspicious") showBanner(resp.data);
 }
 
 report();

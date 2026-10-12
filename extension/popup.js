@@ -2,8 +2,10 @@
 
 const $ = (id) => document.getElementById(id);
 
+// Firefox rejects when the background can't answer; Chrome resolves null.
+// Normalise to null so the UI falls back to its error/offline states.
 function send(msg) {
-  return new Promise((resolve) => chrome.runtime.sendMessage(msg, (r) => resolve(r)));
+  return ext.sendMessage(msg).catch(() => null);
 }
 
 function timeAgo(ms) {
@@ -14,7 +16,7 @@ function timeAgo(ms) {
 }
 
 async function currentTabUrl() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await api.tabs.query({ active: true, currentWindow: true });
   return tab?.url || "";
 }
 

@@ -1,17 +1,26 @@
-// Cyber Health Check — service worker (MV3).
+// Cyber Health Check — service worker / background script (MV3).
 //
 // Owns ALL network calls. Checks each navigated URL against our API's
 // reputation service and raises an alert when a verdict is bad.
 //
 // PRIVACY: only the URL the browser is already navigating to is sent — never
 // page content, cookies, or form data (see docs/privacy-threat-model.md).
-// State lives in chrome.storage (the worker is terminated when idle).
+// State lives in extension storage (the worker is terminated when idle).
+//
+// Cross-browser: uses the `ext.*` helpers from browser-compat.js. In Chrome the
+// shim is imported below; in Firefox the manifest loads it before this file.
+
+if (typeof importScripts === "function") {
+  // Chrome service worker: load the compat shim (no-op in Firefox, which
+  // already loaded browser-compat.js via the manifest's background.scripts).
+  importScripts("browser-compat.js");
+}
 
 const DEFAULT_API = "http://localhost:8098";
 const CACHE_TTL_MS = 5 * 60 * 1000; // local verdict cache, 5 min
 
 async function getApiBase() {
-  const { apiBase } = await chrome.storage.local.get(["apiBase"]);
+  const { apiBase } = await ext.storageGet(["apiBase"]);
   return apiBase || DEFAULT_API;
 }
 
@@ -20,14 +29,14 @@ function verdictRank(v) {
 }
 
 async function localCacheGet(url) {
-  const { verdictCache = {} } = await chrome.storage.local.get(["verdictCache"]);
+  const { verdictCache = {} } = await ext.storageGet(["verdictCache"]);
   const entry = verdictCache[url];
   if (entry && Date.now() - entry.at < CACHE_TTL_MS) return entry;
   return null;
 }
 
 async function localCachePut(url, verdict) {
-  const { verdictCache = {} } = await chrome.storage.local.get(["verdictCache"]);
+  const { verdictCache = {} } = await ext.storageGet(["verdictCache"]);
   verdictCache[url] = { ...verdict, at: Date.now() };
   // Bound the cache so it can't grow without limit.
   const keys = Object.keys(verdictCache);
@@ -35,7 +44,7 @@ async function localCachePut(url, verdict) {
     keys.sort((a, b) => verdictCache[a].at - verdictCache[b].at);
     for (const k of keys.slice(0, keys.length - 500)) delete verdictCache[k];
   }
-  await chrome.storage.local.set({ verdictCache });
+  await ext.storageSet({ verdictCache });
 }
 
 async function checkUrl(url) {
@@ -55,7 +64,7 @@ async function checkUrl(url) {
 }
 
 async function recordAlert(data, tabId) {
-  const { alerts = [] } = await chrome.storage.local.get(["alerts"]);
+  const { alerts = [] } = await ext.storageGet(["alerts"]);
   alerts.unshift({
     indicator: data.indicator,
     verdict: data.verdict,
@@ -63,7 +72,7 @@ async function recordAlert(data, tabId) {
     at: Date.now(),
     tabId,
   });
-  await chrome.storage.local.set({ alerts: alerts.slice(0, 200) });
+  await ext.storageSet({ alerts: alerts.slice(0, 200) });
 }
 
 function badgeFor(verdict) {
@@ -72,7 +81,8 @@ function badgeFor(verdict) {
   return { text: "", color: "#34d399" };
 }
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+// Listener registered at top level so it exists on service-worker cold start.
+ext.onMessage((msg, sender, sendResponse) => {
   if (msg?.type === "CHECK_URL") {
     checkUrl(msg.url)
       .then(async (data) => {
@@ -80,8 +90,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (tabId != null && verdictRank(data.verdict) >= 2) {
           await recordAlert(data, tabId);
           const b = badgeFor(data.verdict);
-          chrome.action.setBadgeText({ tabId, text: b.text });
-          chrome.action.setBadgeBackgroundColor({ tabId, color: b.color });
+          ext.setBadge(tabId, b.text, b.color);
         }
         sendResponse({ ok: true, data });
       })
@@ -98,13 +107,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg?.type === "GET_ALERTS") {
-    chrome.storage.local.get(["alerts"]).then(({ alerts = [] }) =>
+    ext.storageGet(["alerts"]).then(({ alerts = [] }) =>
       sendResponse({ ok: true, alerts })
     );
     return true;
   }
   return false;
 });
-
-// Re-check on tab navigation via the webNavigation-free path: content script
-// reports each URL it lands on, so no extra permission is required.

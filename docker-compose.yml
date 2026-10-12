@@ -1,0 +1,18 @@
+services:
+  api:
+    build: .
+    image: cyber-health-check-api:latest
+    ports:
+      - "8098:8000"
+    environment:
+      # Threat-intel feeds (all optional; PhishTank + MISP are free).
+      ABUSEIPDB_API_KEY: ${ABUSEIPDB_API_KEY:-}
+      MISP_URL: ${MISP_URL:-}
+      MISP_API_KEY: ${MISP_API_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - chc-data:/data
+    restart: unless-stopped
+
+volumes:
+  chc-data:
