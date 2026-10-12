@@ -39,3 +39,6 @@ Thumbs.db
 
 # Extension build
 extension/*.zip
+
+# Extension build output
+extension/dist/
